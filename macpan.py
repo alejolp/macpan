@@ -24,9 +24,18 @@
 import os, sys, random, time, pygame
 from pygame.constants import *
 
-W, H = 320, 240
-NORTH, EAST, SOUTH, WEST = 3, 0, 2, 1
+# True va con T mayúscula xD
 
+if False:
+    W, H = 640, 480
+    TILE_SIZE=32
+    DOUBLE_SCREEN_SIZE=False
+else:
+    W, H = 320, 240
+    TILE_SIZE=16
+    DOUBLE_SCREEN_SIZE=True
+
+NORTH, EAST, SOUTH, WEST = 3, 0, 2, 1
 IMPACT_NONE = 0
 IMPACT_WALL = 1
 IMPACT_ENEMY = 2
@@ -66,7 +75,7 @@ def moveto(x, y, d, step=1):
 def canturn(p, newd):
     m = p.m
     x, y = moveto(p.rect.x, p.rect.y, newd)
-    r2 = pygame.rect.Rect(x, y, 16, 16)
+    r2 = pygame.rect.Rect(x, y, TILE_SIZE, TILE_SIZE)
 
     if r2.collidelist(m.walls) != -1:
         return False
@@ -143,7 +152,7 @@ class Ent(object):
         self.anim.start()
 
     def reset(self):
-        self.rect = pygame.rect.Rect(W/2, H/2, 16, 16)
+        self.rect = pygame.rect.Rect(W/2, H/2, TILE_SIZE, TILE_SIZE)
         self.d = WEST
         self.points = 0
 
@@ -212,9 +221,10 @@ class Map(object):
             x = 0
             for c in line:
                 if c == '#': # Pared
-                    self.walls.append(pygame.rect.Rect(x*16, y*16, 16, 16))
+                    self.walls.append(pygame.rect.Rect(x * TILE_SIZE, 
+                        y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
                 elif c == '.': # Enemigo
-                    self.enemiesstart.append((x*16, y*16))
+                    self.enemiesstart.append((x * TILE_SIZE, y * TILE_SIZE))
                 elif c == '$': # Jugador
                     self.playerstart = x, y
                 x += 1
@@ -239,7 +249,8 @@ class Map(object):
         """
         while True:
             if tiled:
-                p = r(0, W/16 - 1) * 16, r(0, H/16 - 1) * 16
+                p = r(0, W/TILE_SIZE - 1) * TILE_SIZE, \
+                    r(0, H/TILE_SIZE - 1) * TILE_SIZE
             else:
                 p = r(0, W - 1), r(0, H - 1)
                 
@@ -297,15 +308,19 @@ class Fx(object):
 
 def main():
     pygame.init()
-    screen2 = pygame.display.set_mode((W*2, H*2))
 
-    screen = pygame.surface.Surface((W,H))
-    realscreenrect = pygame.rect.Rect(0, 0, W*2, H*2)
+    if DOUBLE_SCREEN_SIZE:
+        screen2 = pygame.display.set_mode((W*2, H*2))
+        screen = pygame.surface.Surface((W,H))
+        realscreenrect = pygame.rect.Rect(0, 0, W*2, H*2)
+    else:
+        screen = screen2 = pygame.display.set_mode((W, H))
+        realscreenrect = pygame.rect.Rect(0, 0, W, H)
 
     salir = False
     m = Map()
     x, y = m.playerstart
-    p = Ent(m, (x*16, y*16))
+    p = Ent(m, (x * TILE_SIZE, y * TILE_SIZE))
 
     fxs = []
 
@@ -318,8 +333,8 @@ def main():
 
     update_title()
 
-    img = pygame.image.load('media/macpan-img.png')
-    imgidx = [(x*16, 0, 16, 16) for x in xrange(15)]
+    img = pygame.image.load('media/macpan-img-%d.png' % TILE_SIZE)
+    imgidx = [(x * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE) for x in xrange(15)]
     trynextturn = None
 
     while not salir:
@@ -360,7 +375,7 @@ def main():
         pygame.draw.rect(screen, BLACK, screen.get_rect())
 
         for e in m.balls:
-            e2 = pygame.rect.Rect(0, 0, 16, 16)
+            e2 = pygame.rect.Rect(0, 0, TILE_SIZE, TILE_SIZE)
             e2.center = e
             screen.blit(img, e2, imgidx[12])
 
@@ -371,7 +386,7 @@ def main():
             screen.blit(img, e.rect, imgidx[8 + e.code])
 
         for e in fxs:
-            r2 = pygame.rect.Rect(0, 0, 16, 16)
+            r2 = pygame.rect.Rect(0, 0, TILE_SIZE, TILE_SIZE)
             r2.center = e.pos
             screen.blit(img, r2, imgidx[e.imgframe()])
 
@@ -382,7 +397,8 @@ def main():
 
         # Flip
 #        pygame.transform.scale2x(screen, screen2)
-        pygame.transform.scale(screen, (W*2, H*2), screen2)
+        if DOUBLE_SCREEN_SIZE:
+            pygame.transform.scale(screen, (W*2, H*2), screen2)
         pygame.display.flip()
 
         # Jugar a 45 FPS

@@ -1,5 +1,10 @@
 Mac Pan - Pac Man game clone
-Alejandro Santos <alejolp@alejolp.com.ar>
+
+Code by:
+ Alejandro Santos <alejolp@alejolp.com.ar>
+
+Graphics by:
+ Emiliano Luciani <emiliano.luciani at gmail dot com>
 
 You can find the latest version of this program on:
 
