@@ -24,9 +24,20 @@
 import os, sys, random, time, pygame
 from pygame.constants import *
 
-# True va con T mayúscula xD
+"""
 
-if False:
+ Cambiar el valor de la variable MODO para:
+
+ 0: Usar graficos de 32x32 y pantalla de 640x480
+
+ 1: Usar graficos de 16x16 y pantalla de 640x480 con graficos del doble tamaño
+    pixelados.
+
+"""
+
+MODO = 0
+
+if MODO == 0:
     W, H = 640, 480
     TILE_SIZE=32
     DOUBLE_SCREEN_SIZE=False
@@ -77,9 +88,11 @@ def canturn(p, newd):
     x, y = moveto(p.rect.x, p.rect.y, newd)
     r2 = pygame.rect.Rect(x, y, TILE_SIZE, TILE_SIZE)
 
-    if r2.collidelist(m.walls) != -1:
-        return False
-    return True
+    return not m.wallhit_rect(r2)
+
+#    if r2.collidelist(m.walls) != -1:
+#        return False
+#    return True
 
 class Timer(object):
     def __init__(self, sps, limit):
@@ -171,7 +184,8 @@ class Ent(object):
 
         self.rect.x, self.rect.y = x, y
 
-        if self.rect.collidelist(self.m.walls) != -1:
+#        if self.rect.collidelist(self.m.walls) != -1:
+        if self.m.wallhit_rect(self.rect):
             self.rect.x, self.rect.y = x2, y2
             x,y=x2,y2
 
@@ -197,12 +211,25 @@ class Enemigo(Ent):
         self.life -= 1
         return self.life == 0
 
+class Jugador(Ent):
+    def __init__(self, m, pos):
+        Ent.__init__(self, m, pos)
+
+    def enemy_collision(self):
+        for i in xrange(len(self.m.enemigos)):
+            e = self.m.enemigos[i]
+            if e.rect.colliderect(self.rect):
+                self.m.events.fire_event([self, e], 'player_enemy_collition')
+                return True
+        return False
+
 class Map(object):
     """
     Clase de mapa del juego
     """
     def __init__(self):
-        self.walls = []
+#        self.walls = []
+        self.mapmatrix = None
         self.enemigos = []
         self.enemiesstart = []
         self.playerstart = None
@@ -215,14 +242,19 @@ class Map(object):
 
     def loadmapfile(self):
         f = open('media/macpan-map.txt', 'r')
+        self.mapmatrix = []
+
         y = 0
         for line in f:
-            line = line.strip()
+            line = line.strip('\r\n')
+            self.mapmatrix.append([0] * len(line))
+
             x = 0
             for c in line:
                 if c == '#': # Pared
-                    self.walls.append(pygame.rect.Rect(x * TILE_SIZE, 
-                        y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+#                    self.walls.append(pygame.rect.Rect(x * TILE_SIZE, 
+#                        y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+                    self.mapmatrix[y][x] = 1
                 elif c == '.': # Enemigo
                     self.enemiesstart.append((x * TILE_SIZE, y * TILE_SIZE))
                 elif c == '$': # Jugador
@@ -253,14 +285,30 @@ class Map(object):
                     r(0, H/TILE_SIZE - 1) * TILE_SIZE
             else:
                 p = r(0, W - 1), r(0, H - 1)
-                
-            if all((not colrp(e, p)) for e in self.walls):
+
+            x, y = p[0] / TILE_SIZE, p[1] / TILE_SIZE
+
+            if self.mapmatrix[y][x] == 0:
                 return p
-                break
+
+    def wallhit_rect(self, r):
+        # FIXME: Hace falta verificar si r.w | r.h > TILE_SIZE
+
+        points = [(r.x, r.y), (r.x + r.w - 1, r.y), (r.x, r.y + r.h - 1),
+            (r.x + r.w - 1, r.y + r.h - 1)]
+
+        for x, y in points:
+            x, y = x/TILE_SIZE, y/TILE_SIZE
+
+            if self.mapmatrix[y][x] == 1:
+                return True
+
+        return False
 
     def loadenemies(self):
 #        self.enemigos = [Enemigo(self, x % 3, self.randfreepos(True), r(1,2)) for x in xrange(6)]
-        self.enemigos = [Enemigo(self, x%3, self.enemiesstart[x], r(1,2)) for x in xrange(len(self.enemiesstart))]
+        self.enemigos = [Enemigo(self, x%3, self.enemiesstart[x], r(1,2))
+            for x in xrange(len(self.enemiesstart))]
 
     def enemydown(self, i):
         del self.enemigos[i]
@@ -289,10 +337,14 @@ class Fx(object):
 #        if any(colrp(e, self.pos) for e in self.m.walls):
 #            return IMPACT_WALL
 
-        for i in xrange(len(self.m.walls)):
-            e = self.m.walls[i]
-            if colrp(e, self.pos):
-                return IMPACT_WALL
+#        for i in xrange(len(self.m.walls)):
+#            e = self.m.walls[i]
+#            if colrp(e, self.pos):
+#                return IMPACT_WALL
+
+        x, y = self.pos
+        if self.m.mapmatrix[y/TILE_SIZE][x/TILE_SIZE] == 1:
+            return IMPACT_WALL
 
         for i in xrange(len(self.m.enemigos)):
             e = self.m.enemigos[i]
@@ -306,104 +358,141 @@ class Fx(object):
     def imgframe(self):
         return self.frames[self.anim.hit()]
 
-def main():
-    pygame.init()
+class Game(object):
+    def __init__(self):
+        pass
 
-    if DOUBLE_SCREEN_SIZE:
-        screen2 = pygame.display.set_mode((W*2, H*2))
-        screen = pygame.surface.Surface((W,H))
-        realscreenrect = pygame.rect.Rect(0, 0, W*2, H*2)
-    else:
-        screen = screen2 = pygame.display.set_mode((W, H))
-        realscreenrect = pygame.rect.Rect(0, 0, W, H)
+    def update_title(self):
+        self.msg.set_text("MacPan | Vidas: %d | Puntos: %d" % (self.lifes, 
+            self.p.points))
 
-    salir = False
-    m = Map()
-    x, y = m.playerstart
-    p = Ent(m, (x * TILE_SIZE, y * TILE_SIZE))
+    def on_player_enemy_collition(self, obj, name):
+        self.lifes -= 1
+        self.p.warppos(self.m.randfreepos(True))
+        self.update_title()
 
-    fxs = []
+    def on_ball_destroy(self, obj, name):
+        self.update_title()
 
-    msg = Label((2, 2))
+    def main(self):
+        pygame.init()
 
-    def update_title():
-        msg.set_text("MacPan | Vidas: %d | Puntos: %d" % (3, p.points))
+        flags = pygame.DOUBLEBUF | pygame.HWSURFACE
 
-    m.events.register_event('ball_destroy', lambda a, b: update_title())
-
-    update_title()
-
-    img = pygame.image.load('media/macpan-img-%d.png' % TILE_SIZE)
-    imgidx = [(x * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE) for x in xrange(15)]
-    trynextturn = None
-
-    while not salir:
-        # Events
-        for e in pygame.event.get():
-            if e.type == QUIT:
-                salir = True
-            elif e.type == KEYDOWN:
-                if e.key in DIAMANTE.keys():
-                    if canturn(p, DIAMANTE[e.key]):
-                        p.d = DIAMANTE[e.key]
-                        trynextturn = None
-                    else:
-                        trynextturn = DIAMANTE[e.key]
-                elif e.key == K_SPACE:
-                    fxs.append(Fx(m, [13, 14], p.rect.center, p.d))
-                elif e.key == K_ESCAPE:
-                    salir = True
-
-        if trynextturn is not None and canturn(p, trynextturn):
-            p.d = trynextturn
-            trynextturn = None
-
-        # Update
-        p.update()
-
-        for e in m.enemigos:
-            e.update()
-
-        for i in xrange(len(fxs)):
-            fxs[i].update()
-            ret = fxs[i].impact()
-            if ret != IMPACT_NONE:
-                del fxs[i]
-                break
-
-        # Draw
-        pygame.draw.rect(screen, BLACK, screen.get_rect())
-
-        for e in m.balls:
-            e2 = pygame.rect.Rect(0, 0, TILE_SIZE, TILE_SIZE)
-            e2.center = e
-            screen.blit(img, e2, imgidx[12])
-
-        for e in m.walls:
-            screen.blit(img, e, imgidx[11])
-
-        for e in m.enemigos:
-            screen.blit(img, e.rect, imgidx[8 + e.code])
-
-        for e in fxs:
-            r2 = pygame.rect.Rect(0, 0, TILE_SIZE, TILE_SIZE)
-            r2.center = e.pos
-            screen.blit(img, r2, imgidx[e.imgframe()])
-
-        frame = p.still and (p.d + 4) or (p.d + p.anim.hit() * 4)
-        screen.blit(img, p.rect, imgidx[frame])
-
-        msg.render(screen)
-
-        # Flip
-#        pygame.transform.scale2x(screen, screen2)
         if DOUBLE_SCREEN_SIZE:
-            pygame.transform.scale(screen, (W*2, H*2), screen2)
-        pygame.display.flip()
+            screen2 = pygame.display.set_mode((W*2, H*2), flags)
+            screen = pygame.surface.Surface((W,H))
+            realscreenrect = pygame.rect.Rect(0, 0, W*2, H*2)
+        else:
+            screen = screen2 = pygame.display.set_mode((W, H), flags)
+            realscreenrect = pygame.rect.Rect(0, 0, W, H)
 
-        # Jugar a 45 FPS
-        time.sleep(1000./45/1000)
+        salir = False
+        self.m = m = Map()
+        x, y = m.playerstart
+        self.p = p = Jugador(m, (x * TILE_SIZE, y * TILE_SIZE))
+
+        self.lifes = 3
+
+        clock = pygame.time.Clock()
+        fxs = []
+
+        self.msg = Label((2, 2))
+        self.events = self.m.events
+
+        m.events.register_event('ball_destroy',
+            self.on_ball_destroy)
+
+        m.events.register_event('player_enemy_collition',
+            self.on_player_enemy_collition)
+
+        self.update_title()
+
+        img = pygame.image.load('media/macpan-img-%d.png' % TILE_SIZE)
+
+        # Convierte la imagen al formato de la pantalla y mejora la 
+        # performance del juego.
+        img = img.convert_alpha()
+
+        imgidx = [(x * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE) for x in xrange(15)]
+        trynextturn = None
+
+        tmprect = pygame.rect.Rect(0, 0, TILE_SIZE, TILE_SIZE)
+
+        while not salir:
+            # Events
+            for e in pygame.event.get():
+                if e.type == QUIT:
+                    salir = True
+                elif e.type == KEYDOWN:
+                    if e.key in DIAMANTE.keys():
+                        if canturn(p, DIAMANTE[e.key]):
+                            p.d = DIAMANTE[e.key]
+                            trynextturn = None
+                        else:
+                            trynextturn = DIAMANTE[e.key]
+                    elif e.key == K_SPACE:
+                        fxs.append(Fx(m, [13, 14], p.rect.center, p.d))
+                    elif e.key == K_ESCAPE:
+                        salir = True
+
+            if trynextturn is not None and canturn(p, trynextturn):
+                p.d = trynextturn
+                trynextturn = None
+
+            # Update
+            p.update()
+            p.enemy_collision()
+
+            for e in m.enemigos:
+                e.update()
+
+            for i in xrange(len(fxs)):
+                fxs[i].update()
+                ret = fxs[i].impact()
+                if ret != IMPACT_NONE:
+                    del fxs[i]
+                    break
+
+            # Draw
+#            pygame.draw.rect(screen, BLACK, screen.get_rect())
+
+            for y in xrange(15):
+                for x in xrange(20):
+                    tmprect.x = x * TILE_SIZE
+                    tmprect.y = y * TILE_SIZE
+                    if m.mapmatrix[y][x] == 1:
+                        screen.blit(img, tmprect, imgidx[11])
+                    else:
+                        pygame.draw.rect(screen, BLACK, tmprect)
+
+            for e in m.balls:
+                tmprect.center = e
+                screen.blit(img, tmprect, imgidx[12])
+
+            for e in m.enemigos:
+                screen.blit(img, e.rect, imgidx[8 + e.code])
+
+            for e in fxs:
+                tmprect.center = e.pos
+                screen.blit(img, tmprect, imgidx[e.imgframe()])
+
+            # Dibujo el Pac Man.
+            frame = p.still and (p.d + 4) or (p.d + p.anim.hit() * 4)
+            screen.blit(img, p.rect, imgidx[frame])
+
+            self.msg.render(screen)
+
+            # Flip
+    #        pygame.transform.scale2x(screen, screen2)
+            if DOUBLE_SCREEN_SIZE:
+                pygame.transform.scale(screen, (W*2, H*2), screen2)
+            pygame.display.flip()
+
+            # Jugar a 45 FPS
+            clock.tick(45)
 
 if __name__ == '__main__':
-    main()
+    g = Game()
+    g.main()
 
